@@ -95,6 +95,21 @@ func main() {
 		},
 	}, s.UploadDocument)
 
+	mcp.AddTool(impl, &mcp.Tool{
+		Name:        "delete_document",
+		Description: "Delete a document from Tensorlake.",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"document_id": {
+					Type:        "string",
+					Description: "The ID of the document to delete. Example: 'file_1234567890'. This is the document_id returned by the upload_document tool.",
+				},
+			},
+			Required: []string{"document_id"},
+		},
+	}, s.DeleteDocument)
+
 	if err := impl.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		slog.Error("failed to run tensorlake-mcp", "error", err)
 	}
