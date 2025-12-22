@@ -110,6 +110,29 @@ func main() {
 		},
 	}, s.DeleteDocument)
 
+	mcp.AddTool(impl, &mcp.Tool{
+		Name:        "parse_document",
+		Description: "Parse a document and obtain the parsed outcome. The tool returns the parse_id, the status of the parse job, and the results of the parse job if the background job is completed. The parse job is started in the background if sync is false, otherwise, the tool will wait for the parse job to complete and return the results.",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"document_id": {
+					Type:        "string",
+					Description: "The document Id to start parsing. Example: 'file_1234567890'. This is the document_id returned by the upload_document tool.",
+				},
+				"parse_id": {
+					Type:        "string",
+					Description: "The parse ID to check the status or get the results. Example: 'parse_1234567890'. If provided, the tool will check the status or get the results of the parse job.",
+				},
+				"sync": {
+					Type:        "boolean",
+					Description: "If true, wait for parsing to complete before returning results. If false, the tool will return the parse_id and wait for the parse job to complete in the background.",
+				},
+				// TODO: extend parsing options.
+			},
+		},
+	}, s.ParseDocument)
+
 	if err := impl.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		slog.Error("failed to run tensorlake-mcp", "error", err)
 	}

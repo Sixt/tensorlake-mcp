@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -222,6 +223,115 @@ func (s *server) DeleteDocument(ctx context.Context, _ *mcp.CallToolRequest, in 
 		return newToolResultError(fmt.Errorf("failed to delete document: %w", err))
 	}
 	return newToolResultJSON(fmt.Sprintf("Document (%s) deleted successfully", in.DocumentId))
+}
+
+// ParseDocumentInput represents the input for the parse_document tool.
+type ParseDocumentInput struct {
+	DocumentId string `json:"document_id,omitempty"`
+	ParseId    string `json:"parse_id,omitempty"`
+	Sync       bool   `json:"sync,omitempty"`
+}
+
+// ParseDocumentOutput represents the output from the extract_text tool.
+type ParseDocumentOutput struct {
+	ParseID   string                 `json:"parse_id"`
+	Status    tensorlake.ParseStatus `json:"status"`
+	Message   string                 `json:"message"`
+	Result    any                    `json:"result,omitempty"`
+	CreatedAt string                 `json:"created_at"` // RFC3339 timestamp
+}
+
+// ParseDocument handles the parse_document tool call.
+func (s *server) ParseDocument(ctx context.Context, req *mcp.CallToolRequest, in *ParseDocumentInput) (*mcp.CallToolResult, any, error) {
+	// Fast path: if parse ID is provided, check the status and return the results.
+	if in.ParseId != "" {
+		return s.fetchParseResult(ctx, req, in.ParseId, in.Sync)
+	}
+
+	// If both document ID and parse ID are empty, throw an error.
+	if in.DocumentId == "" {
+		return newToolResultError(errors.New("either 'document_id' or 'parse_id' must be provided"))
+	}
+	s.sendProgress(ctx, req, 0, 4, "Starting parse job...")
+
+	// Start parse job.
+	pr, err := s.tl.ParseDocument(ctx, &tensorlake.ParseDocumentRequest{
+		FileSource: tensorlake.FileSource{FileId: in.DocumentId},
+		ParsingOptions: &tensorlake.ParsingOptions{
+			TableOutputMode:    tensorlake.TableOutputModeMarkdown,
+			TableParsingFormat: tensorlake.TableParsingFormatVLM,
+			// Do not chunk the document so that we can parse the whole document at once.
+			ChunkingStrategy: tensorlake.ChunkingStrategyNone,
+		},
+	})
+	if err != nil {
+		return newToolResultError(fmt.Errorf("failed to start parse job: %w", err))
+	}
+
+	// If sync is true, poll for completion with exponential backoff
+	if in.Sync {
+		return s.fetchParseResult(ctx, req, pr.ParseId, true)
+	}
+
+	return newToolResultJSON(&ParseDocumentOutput{
+		ParseID:   pr.ParseId,
+		Status:    tensorlake.ParseStatusPending,
+		Message:   fmt.Sprintf("Parse job started (ID: %s)", pr.ParseId),
+		CreatedAt: time.Now().Format(time.RFC3339),
+	})
+}
+
+// fetchParseResult retrieves and formats the parse result for a given parse Id.
+func (s *server) fetchParseResult(ctx context.Context, req *mcp.CallToolRequest, parseId string, sync bool) (*mcp.CallToolResult, any, error) {
+	r, err := s.tl.GetParseResult(ctx, parseId, tensorlake.WithSSE(sync), tensorlake.WithOnUpdate(func(name tensorlake.ParseEventName, result *tensorlake.ParseResult) {
+		switch name {
+		case tensorlake.SSEEventParseQueued:
+			s.sendProgress(ctx, req, 1, 4, "Parse job queued")
+		case tensorlake.SSEEventParseUpdate:
+			s.sendProgress(ctx, req, 2, 4, "Parse job updated")
+		case tensorlake.SSEEventParseDone:
+			s.sendProgress(ctx, req, 3, 4, "Parse job completed")
+		case tensorlake.SSEEventParseFailed:
+			s.sendProgress(ctx, req, 3, 4, "Parse job failed")
+		}
+	}))
+	if err != nil {
+		return newToolResultError(fmt.Errorf("failed to get parse result: %w", err))
+	}
+
+	slog.Info("parse result fetched", "parse_id", r.ParseId, "status", r.Status, "results", r)
+
+	s.sendProgress(ctx, req, 4, 4, fmt.Sprintf("Parse job done (ID: %s)", r.ParseId))
+	o := ParseDocumentOutput{
+		ParseID:   r.ParseId,
+		Status:    r.Status,
+		Message:   fmt.Sprintf("Parse job done (ID: %s)", r.ParseId),
+		CreatedAt: time.Now().Format(time.RFC3339),
+	}
+	// TODO: allow structured data output.
+	if len(r.Chunks) > 0 {
+		o.Result = r.Chunks[0].Content
+	}
+	return newToolResultJSON(&o)
+}
+
+// sendProgress sends a progress notification if a progress token is available.
+func (s *server) sendProgress(ctx context.Context, req *mcp.CallToolRequest, progress float64, total float64, message string) {
+	if req == nil || req.Session == nil {
+		return
+	}
+
+	token := req.Params.GetProgressToken()
+	if token == nil {
+		return
+	}
+
+	_ = req.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{
+		ProgressToken: token,
+		Progress:      progress,
+		Total:         total,
+		Message:       message,
+	}) // Ignore error for non-critical notifications
 }
 
 func newToolResultJSON[T any](data T) (*mcp.CallToolResult, any, error) {
