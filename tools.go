@@ -215,6 +215,15 @@ type DeleteDocumentInput struct {
 	DocumentId string `json:"document_id"`
 }
 
+// DeleteFile deletes a file from Tensorlake.
+func (s *server) DeleteDocument(ctx context.Context, _ *mcp.CallToolRequest, in *DeleteDocumentInput) (*mcp.CallToolResult, any, error) {
+	err := s.tl.DeleteFile(ctx, in.DocumentId)
+	if err != nil {
+		return newToolResultError(fmt.Errorf("failed to delete document: %w", err))
+	}
+	return newToolResultJSON(fmt.Sprintf("Document (%s) deleted successfully", in.DocumentId))
+}
+
 func newToolResultJSON[T any](data T) (*mcp.CallToolResult, any, error) {
 	b, err := json.Marshal(data)
 	if err != nil {
