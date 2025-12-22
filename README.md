@@ -9,6 +9,10 @@ An MCP (Model Context Protocol) server that provides access to Tensorlake's docu
 - **Document Management**: List and delete documents in your session
 - **MCP Resources**: Access parsed documents as MCP resources for seamless integration
 
+<a href="https://github.com/user-attachments/assets/e4818385-0f65-4b7b-9efe-8bc747e80630">
+  <img src="./assets/tensorlake-mcp-demo.gif" alt="Tensorlake MCP Server Demo" width="600">
+</a>
+
 ## Prerequisites
 
 - A Tensorlake API key (sign up at [Tensorlake](https://tensorlake.ai))
