@@ -39,7 +39,10 @@ func init() {
 	logLevel = cmp.Or(logLevel, "debug") // default to debug
 
 	// Setup the default logger be a json logger.
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	//
+	// Note that MCP requires stdout to be used exclusively for JSON-RPC messages.
+	// All logging must go to stderr.
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level: func() slog.Level {
 			switch logLevel {
 			case "debug":
@@ -75,10 +78,18 @@ func main() {
 		},
 	})
 
+	ctx := context.Background()
 	s := newServer()
+	go s.initializeDocumentResources(ctx)
+	defer s.CleanupSession(ctx) // Cleanup session on exit.
 
 	// Notes: We word the tool names using "document" instead of "file" to avoid confusion with the file tool which
 	// is already spreaded everywhere in LLM host applications. For instance, Claude or Cursor both have their own file tool.
+
+	mcp.AddTool(impl, &mcp.Tool{
+		Name:        "list_documents",
+		Description: "List all documents in the session.",
+	}, s.ListDocuments)
 
 	mcp.AddTool(impl, &mcp.Tool{
 		Name:        "upload_document",
@@ -118,7 +129,7 @@ func main() {
 			Properties: map[string]*jsonschema.Schema{
 				"document_id": {
 					Type:        "string",
-					Description: "The document Id to start parsing. Example: 'file_1234567890'. This is the document_id returned by the upload_document tool.",
+					Description: "The document Id to start parsing. Example: 'file_1234567890'. This is the document_id returned by the upload_document tool. A document ID must be provided.",
 				},
 				"parse_id": {
 					Type:        "string",
@@ -130,8 +141,16 @@ func main() {
 				},
 				// TODO: extend parsing options.
 			},
+			Required: []string{"document_id"},
 		},
 	}, s.ParseDocument)
+
+	impl.AddResource(&mcp.Resource{
+		Name:        "documents",
+		Description: "Access all documents and their metadata",
+		URI:         "tensorlake://documents",
+		MIMEType:    "application/json",
+	}, s.DocumentResources)
 
 	if err := impl.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		slog.Error("failed to run tensorlake-mcp", "error", err)

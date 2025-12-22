@@ -1,3 +1,5 @@
+github.com/go4org/hashtriemap v0.0.0-20251130024219-545ba229f689 h1:0psnKZ+N2IP43/SZC8SKx6OpFJwLmQb9m9QyV9BC2f8=
+github.com/go4org/hashtriemap v0.0.0-20251130024219-545ba229f689/go.mod h1:OGmRfY/9QEK2P5zCRtmqfbCF283xPkU2dvVA4MvbvpI=
 github.com/golang-jwt/jwt/v5 v5.2.2 h1:Rl4B7itRWVtYIHFrSNd7vhTiz9UpLdi6gZhZ3wEeDy8=
 github.com/golang-jwt/jwt/v5 v5.2.2/go.mod h1:pqrtFR0X4osieyHYxtmOUWsAWrfe1Q5UVIyoH402zdk=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
@@ -8,8 +10,8 @@ github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/modelcontextprotocol/go-sdk v1.2.0-pre.2 h1:U2JzHO7jPPKyo1Uu34xuR0QOgeLrWmsIG6orPJE//Bc=
 github.com/modelcontextprotocol/go-sdk v1.2.0-pre.2/go.mod h1:6fM3LCm3yV7pAs8isnKLn07oKtB0MP9LHd3DfAcKw10=
-github.com/sixt/tensorlake-go v0.1.0 h1:k0Xo45Qy789KvUEHSD8vKRwytgfL4zvmAsizkW47ZF8=
-github.com/sixt/tensorlake-go v0.1.0/go.mod h1:qPF3a5Z2gAPdz4SoKE4NRnb72+c5D3/c9F21+BKvbFc=
+github.com/sixt/tensorlake-go v0.1.1 h1:LA6UzOk5Iv2fKYqqzgAXOK0zHBwXjxTTkFIbXjmBxLw=
+github.com/sixt/tensorlake-go v0.1.1/go.mod h1:qPF3a5Z2gAPdz4SoKE4NRnb72+c5D3/c9F21+BKvbFc=
 github.com/yosida95/uritemplate/v3 v3.0.2 h1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=
 github.com/yosida95/uritemplate/v3 v3.0.2/go.mod h1:ILOh0sOhIJR3+L/8afwt/kE++YT040gmv5BQTMR2HP4=
 golang.org/x/oauth2 v0.30.0 h1:dnDm7JmhM45NNpd8FDDeLhK6FwqbOf4MLCM9zb1BOHI=
