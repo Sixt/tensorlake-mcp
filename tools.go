@@ -46,8 +46,12 @@ type UploadDocumentInput struct {
 }
 
 type UploadDocumentOutput struct {
-	DocumentId string `json:"document_id"`
-	CreatedAt  string `json:"created_at"`
+	DocumentId       string              `json:"document_id"`
+	DocumentName     string              `json:"document_name"`
+	DocumentMimeType tensorlake.MimeType `json:"document_mime_type"`
+	DocumentSize     int64               `json:"document_size"`
+	ChecksumSHA256   string              `json:"checksum_sha256,omitempty"`
+	CreatedAt        string              `json:"created_at"`
 }
 
 // UploadDocument uploads a document from a URL, local path, or data URI to Tensorlake and returns the document ID and creation time.
@@ -100,8 +104,19 @@ func (s *server) uploadDocumentFromURL(ctx context.Context, _ *mcp.CallToolReque
 		return newToolResultError(fmt.Errorf("failed to upload document: %w", err))
 	}
 
-	o := &UploadDocumentOutput{DocumentId: r.FileId, CreatedAt: r.CreatedAt.Format(time.RFC3339)}
-	return newToolResultJSON(o)
+	m, err := s.tl.GetFileMetadata(ctx, r.FileId)
+	if err != nil {
+		return newToolResultError(fmt.Errorf("failed to get document metadata: %w", err))
+	}
+
+	return newToolResultJSON(&UploadDocumentOutput{
+		DocumentId:       r.FileId,
+		DocumentName:     m.FileName,
+		DocumentMimeType: m.MimeType,
+		DocumentSize:     m.FileSize,
+		ChecksumSHA256:   m.ChecksumSHA256,
+		CreatedAt:        r.CreatedAt.Format(time.RFC3339),
+	})
 }
 
 // downloadFile downloads a file from a URL with optional authorization.
@@ -184,8 +199,19 @@ func (s *server) uploadDocumentFromDataURI(ctx context.Context, _ *mcp.CallToolR
 
 	slog.Info("document uplaod completed", "document_id", r.FileId)
 
-	o := &UploadDocumentOutput{DocumentId: r.FileId, CreatedAt: r.CreatedAt.Format(time.RFC3339)}
-	return newToolResultJSON(o)
+	m, err := s.tl.GetFileMetadata(ctx, r.FileId)
+	if err != nil {
+		return newToolResultError(fmt.Errorf("failed to get document metadata: %w", err))
+	}
+
+	return newToolResultJSON(&UploadDocumentOutput{
+		DocumentId:       r.FileId,
+		DocumentName:     m.FileName,
+		DocumentMimeType: m.MimeType,
+		DocumentSize:     m.FileSize,
+		ChecksumSHA256:   m.ChecksumSHA256,
+		CreatedAt:        r.CreatedAt.Format(time.RFC3339),
+	})
 }
 
 func (s *server) uploadDocumentFromLocalPath(ctx context.Context, _ *mcp.CallToolRequest, in *UploadDocumentInput) (*mcp.CallToolResult, any, error) {
@@ -208,8 +234,19 @@ func (s *server) uploadDocumentFromLocalPath(ctx context.Context, _ *mcp.CallToo
 
 	slog.Info("document uplaod completed", "document_id", r.FileId)
 
-	o := &UploadDocumentOutput{DocumentId: r.FileId, CreatedAt: r.CreatedAt.Format(time.RFC3339)}
-	return newToolResultJSON(o)
+	m, err := s.tl.GetFileMetadata(ctx, r.FileId)
+	if err != nil {
+		return newToolResultError(fmt.Errorf("failed to get document metadata: %w", err))
+	}
+
+	return newToolResultJSON(&UploadDocumentOutput{
+		DocumentId:       r.FileId,
+		DocumentName:     m.FileName,
+		DocumentMimeType: m.MimeType,
+		DocumentSize:     m.FileSize,
+		ChecksumSHA256:   m.ChecksumSHA256,
+		CreatedAt:        r.CreatedAt.Format(time.RFC3339),
+	})
 }
 
 type DeleteDocumentInput struct {
