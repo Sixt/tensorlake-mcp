@@ -41,6 +41,15 @@ func newServer() *server {
 	return &server{tl: tensorlake.NewClient(tensorlake.WithBaseURL(tlAPIBaseURL), tensorlake.WithAPIKey(tlAPIKey))}
 }
 
+func (s *server) ListDocuments(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
+	documents := make([]*FileInfo, 0)
+	files.Range(func(key string, value *FileInfo) bool {
+		documents = append(documents, value)
+		return true
+	})
+	return newToolResultJSON(documents)
+}
+
 type UploadDocumentInput struct {
 	URL string `json:"url"`
 }
@@ -109,6 +118,14 @@ func (s *server) uploadDocumentFromURL(ctx context.Context, _ *mcp.CallToolReque
 		return newToolResultError(fmt.Errorf("failed to get document metadata: %w", err))
 	}
 
+	files.Store(r.FileId, &FileInfo{
+		FileId:         r.FileId,
+		FileName:       m.FileName,
+		MimeType:       m.MimeType,
+		FileSize:       m.FileSize,
+		ChecksumSHA256: m.ChecksumSHA256,
+		CreatedAt:      r.CreatedAt.Format(time.RFC3339),
+	})
 	return newToolResultJSON(&UploadDocumentOutput{
 		DocumentId:       r.FileId,
 		DocumentName:     m.FileName,
@@ -203,6 +220,14 @@ func (s *server) uploadDocumentFromDataURI(ctx context.Context, _ *mcp.CallToolR
 	if err != nil {
 		return newToolResultError(fmt.Errorf("failed to get document metadata: %w", err))
 	}
+	files.Store(r.FileId, &FileInfo{
+		FileId:         r.FileId,
+		FileName:       m.FileName,
+		MimeType:       m.MimeType,
+		FileSize:       m.FileSize,
+		ChecksumSHA256: m.ChecksumSHA256,
+		CreatedAt:      r.CreatedAt.Format(time.RFC3339),
+	})
 
 	return newToolResultJSON(&UploadDocumentOutput{
 		DocumentId:       r.FileId,
@@ -239,6 +264,14 @@ func (s *server) uploadDocumentFromLocalPath(ctx context.Context, _ *mcp.CallToo
 		return newToolResultError(fmt.Errorf("failed to get document metadata: %w", err))
 	}
 
+	files.Store(r.FileId, &FileInfo{
+		FileId:         r.FileId,
+		FileName:       m.FileName,
+		MimeType:       m.MimeType,
+		FileSize:       m.FileSize,
+		ChecksumSHA256: m.ChecksumSHA256,
+		CreatedAt:      r.CreatedAt.Format(time.RFC3339),
+	})
 	return newToolResultJSON(&UploadDocumentOutput{
 		DocumentId:       r.FileId,
 		DocumentName:     m.FileName,
@@ -259,6 +292,18 @@ func (s *server) DeleteDocument(ctx context.Context, _ *mcp.CallToolRequest, in 
 	if err != nil {
 		return newToolResultError(fmt.Errorf("failed to delete document: %w", err))
 	}
+
+	// Delete all relevant parse jobs.
+	if info, ok := files.Load(in.DocumentId); ok {
+		for _, parseJob := range info.ParseJobs {
+			err := s.tl.DeleteParseJob(ctx, parseJob.ParseId)
+			if err != nil {
+				slog.Error("failed to delete parse job", "parse_id", parseJob.ParseId, "error", err)
+			}
+		}
+	}
+
+	files.Delete(in.DocumentId)
 	return newToolResultJSON(fmt.Sprintf("Document (%s) deleted successfully", in.DocumentId))
 }
 
@@ -271,18 +316,19 @@ type ParseDocumentInput struct {
 
 // ParseDocumentOutput represents the output from the extract_text tool.
 type ParseDocumentOutput struct {
-	ParseID   string                 `json:"parse_id"`
-	Status    tensorlake.ParseStatus `json:"status"`
-	Message   string                 `json:"message"`
-	Result    any                    `json:"result,omitempty"`
-	CreatedAt string                 `json:"created_at"` // RFC3339 timestamp
+	DocumentId string                 `json:"document_id"`
+	ParseID    string                 `json:"parse_id"`
+	Status     tensorlake.ParseStatus `json:"status"`
+	Message    string                 `json:"message"`
+	Result     string                 `json:"result,omitempty"`
+	CreatedAt  string                 `json:"created_at"` // RFC3339 timestamp
 }
 
 // ParseDocument handles the parse_document tool call.
 func (s *server) ParseDocument(ctx context.Context, req *mcp.CallToolRequest, in *ParseDocumentInput) (*mcp.CallToolResult, any, error) {
 	// Fast path: if parse ID is provided, check the status and return the results.
 	if in.ParseId != "" {
-		return s.fetchParseResult(ctx, req, in.ParseId, in.Sync)
+		return s.fetchParseResult(ctx, req, in.DocumentId, in.ParseId, in.Sync)
 	}
 
 	// If both document ID and parse ID are empty, throw an error.
@@ -307,19 +353,35 @@ func (s *server) ParseDocument(ctx context.Context, req *mcp.CallToolRequest, in
 
 	// If sync is true, poll for completion with exponential backoff
 	if in.Sync {
-		return s.fetchParseResult(ctx, req, pr.ParseId, true)
+		return s.fetchParseResult(ctx, req, in.DocumentId, pr.ParseId, true)
 	}
 
 	return newToolResultJSON(&ParseDocumentOutput{
-		ParseID:   pr.ParseId,
-		Status:    tensorlake.ParseStatusPending,
-		Message:   fmt.Sprintf("Parse job started (ID: %s)", pr.ParseId),
-		CreatedAt: time.Now().Format(time.RFC3339),
+		DocumentId: in.DocumentId,
+		ParseID:    pr.ParseId,
+		Status:     tensorlake.ParseStatusPending,
+		Message:    fmt.Sprintf("Parse job started (ID: %s)", pr.ParseId),
+		CreatedAt:  time.Now().Format(time.RFC3339),
 	})
 }
 
 // fetchParseResult retrieves and formats the parse result for a given parse Id.
-func (s *server) fetchParseResult(ctx context.Context, req *mcp.CallToolRequest, parseId string, sync bool) (*mcp.CallToolResult, any, error) {
+func (s *server) fetchParseResult(ctx context.Context, req *mcp.CallToolRequest, documentId, parseId string, sync bool) (*mcp.CallToolResult, any, error) {
+	// Fast path: If parse ID is in the parses map, return the results.
+	if pr, ok := files.Load(documentId); ok {
+		if len(pr.ParseJobs) > 0 {
+			return newToolResultJSON(&ParseDocumentOutput{
+				DocumentId: documentId,
+				ParseID:    parseId,
+				Status:     tensorlake.ParseStatusSuccessful,
+				Result:     pr.ParseJobs[0].Chunks[0].Content,
+				Message:    fmt.Sprintf("Parse job done (ID: %s)", parseId),
+				CreatedAt:  pr.CreatedAt,
+			})
+		}
+	}
+
+	// Slow path: Poll for the parse result.
 	r, err := s.tl.GetParseResult(ctx, parseId, tensorlake.WithSSE(sync), tensorlake.WithOnUpdate(func(name tensorlake.ParseEventName, result *tensorlake.ParseResult) {
 		switch name {
 		case tensorlake.SSEEventParseQueued:
@@ -337,17 +399,32 @@ func (s *server) fetchParseResult(ctx context.Context, req *mcp.CallToolRequest,
 	}
 
 	slog.Info("parse result fetched", "parse_id", r.ParseId, "status", r.Status, "results", r)
-
-	s.sendProgress(ctx, req, 4, 4, fmt.Sprintf("Parse job done (ID: %s)", r.ParseId))
 	o := ParseDocumentOutput{
 		ParseID:   r.ParseId,
 		Status:    r.Status,
 		Message:   fmt.Sprintf("Parse job done (ID: %s)", r.ParseId),
-		CreatedAt: time.Now().Format(time.RFC3339),
+		CreatedAt: r.CreatedAt,
 	}
 	// TODO: allow structured data output.
 	if len(r.Chunks) > 0 {
 		o.Result = r.Chunks[0].Content
+	}
+
+	// Store the parse result in the parses map.
+	info, ok := files.Load(documentId)
+	if !ok {
+		files.Store(documentId, &FileInfo{
+			FileId:         documentId,
+			FileName:       info.FileName,
+			MimeType:       info.MimeType,
+			FileSize:       info.FileSize,
+			ChecksumSHA256: info.ChecksumSHA256,
+			CreatedAt:      info.CreatedAt,
+			ParseJobs:      []*tensorlake.ParseResult{r},
+		})
+	} else {
+		info.ParseJobs = append(info.ParseJobs, r)
+		files.Store(documentId, info)
 	}
 	return newToolResultJSON(&o)
 }
@@ -358,13 +435,8 @@ func (s *server) sendProgress(ctx context.Context, req *mcp.CallToolRequest, pro
 		return
 	}
 
-	token := req.Params.GetProgressToken()
-	if token == nil {
-		return
-	}
-
 	_ = req.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{
-		ProgressToken: token,
+		ProgressToken: req.Params.GetProgressToken(),
 		Progress:      progress,
 		Total:         total,
 		Message:       message,
@@ -394,4 +466,26 @@ func newToolResultError(err error) (*mcp.CallToolResult, any, error) {
 			},
 		},
 	}, nil, nil
+}
+
+func (s *server) CleanupSession(ctx context.Context) {
+	files.Range(func(key string, value *FileInfo) bool {
+		err := s.tl.DeleteFile(ctx, key)
+		if err != nil {
+			slog.Error("failed to delete document", "document_id", key, "error", err)
+			return false
+		}
+		slog.Info("document deleted", "document_id", key)
+
+		for _, parseJob := range value.ParseJobs {
+			err := s.tl.DeleteParseJob(ctx, parseJob.ParseId)
+			if err != nil {
+				slog.Error("failed to delete parse job", "parse_id", parseJob.ParseId, "error", err)
+				return false
+			}
+			slog.Info("parse job deleted", "parse_id", parseJob.ParseId)
+		}
+
+		return true
+	})
 }
