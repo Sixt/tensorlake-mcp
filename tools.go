@@ -413,15 +413,18 @@ func (s *server) fetchParseResult(ctx context.Context, req *mcp.CallToolRequest,
 	// Store the parse result in the parses map.
 	info, ok := files.Load(documentId)
 	if !ok {
-		files.Store(documentId, &FileInfo{
-			FileId:         documentId,
-			FileName:       info.FileName,
-			MimeType:       info.MimeType,
-			FileSize:       info.FileSize,
-			ChecksumSHA256: info.ChecksumSHA256,
-			CreatedAt:      info.CreatedAt,
-			ParseJobs:      []*tensorlake.ParseResult{r},
-		})
+		finfo := &FileInfo{
+			FileId:    documentId,
+			ParseJobs: []*tensorlake.ParseResult{r},
+		}
+		if m, err := s.tl.GetFileMetadata(ctx, documentId); err == nil {
+			finfo.FileName = m.FileName
+			finfo.MimeType = m.MimeType
+			finfo.FileSize = m.FileSize
+			finfo.ChecksumSHA256 = m.ChecksumSHA256
+			finfo.CreatedAt = m.CreatedAt
+		}
+		files.Store(documentId, finfo)
 	} else {
 		info.ParseJobs = append(info.ParseJobs, r)
 		files.Store(documentId, info)
