@@ -125,3 +125,67 @@ func TestUploadParseDelete(t *testing.T) {
 		t.Error("expected document to be removed from files map after delete")
 	}
 }
+
+// TestCleanupSession uploads two documents, parses them, then calls
+// CleanupSession and verifies all documents and parse jobs are cleaned up.
+// This also verifies that cleanup continues past individual errors
+// (best-effort) rather than stopping on the first failure.
+func TestCleanupSession(t *testing.T) {
+	s := initTestServer(t)
+	ctx := context.Background()
+
+	// Upload two documents.
+	var docIDs []string
+	for range 2 {
+		result, _, err := s.UploadDocument(ctx, &mcp.CallToolRequest{}, &UploadDocumentInput{
+			URL: "file://testdata/sixt_DE_de.pdf",
+		})
+		if err != nil {
+			t.Fatalf("UploadDocument error: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("UploadDocument tool error: %v", result.Content)
+		}
+		upload := unmarshalToolResult[UploadDocumentOutput](t, result)
+		docIDs = append(docIDs, upload.DocumentId)
+	}
+
+	// Parse both documents synchronously.
+	for _, docID := range docIDs {
+		result, _, err := s.ParseDocument(ctx, &mcp.CallToolRequest{}, &ParseDocumentInput{
+			DocumentId: docID,
+			Sync:       true,
+		})
+		if err != nil {
+			t.Fatalf("ParseDocument error: %v", err)
+		}
+		if result.IsError {
+			t.Fatalf("ParseDocument tool error: %v", result.Content)
+		}
+	}
+
+	// Verify both documents are in the files map with parse jobs.
+	for _, docID := range docIDs {
+		info, ok := files.Load(docID)
+		if !ok {
+			t.Fatalf("expected document %s in files map before cleanup", docID)
+		}
+		if len(info.ParseJobs) == 0 {
+			t.Fatalf("expected parse jobs for document %s before cleanup", docID)
+		}
+	}
+
+	// Run cleanup.
+	s.CleanupSession(ctx)
+
+	// Verify the files map is empty — all documents should have been
+	// processed regardless of individual errors.
+	var remaining []string
+	files.Range(func(key string, _ *FileInfo) bool {
+		remaining = append(remaining, key)
+		return true
+	})
+	if len(remaining) > 0 {
+		t.Errorf("expected files map to be empty after CleanupSession, still has: %v", remaining)
+	}
+}

@@ -58,13 +58,14 @@ func init() {
 	})))
 
 	tlAPIBaseURL = cmp.Or(tlAPIBaseURL, "https://api.tensorlake.ai/documents/v2")
+}
+
+func main() {
 	if tlAPIKey == "" {
 		slog.Error("TENSORLAKE_API_KEY environment variable is required")
 		os.Exit(1)
 	}
-}
 
-func main() {
 	impl := mcp.NewServer(&mcp.Implementation{
 		Name:    serverName,
 		Version: serverVersion,

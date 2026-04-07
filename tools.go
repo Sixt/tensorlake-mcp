@@ -473,22 +473,22 @@ func newToolResultError(err error) (*mcp.CallToolResult, any, error) {
 
 func (s *server) CleanupSession(ctx context.Context) {
 	files.Range(func(key string, value *FileInfo) bool {
-		err := s.tl.DeleteFile(ctx, key)
-		if err != nil {
-			slog.Error("failed to delete document", "document_id", key, "error", err)
-			return false
-		}
-		slog.Info("document deleted", "document_id", key)
-
 		for _, parseJob := range value.ParseJobs {
 			err := s.tl.DeleteParseJob(ctx, parseJob.ParseId)
 			if err != nil {
 				slog.Error("failed to delete parse job", "parse_id", parseJob.ParseId, "error", err)
-				return false
+				continue
 			}
 			slog.Info("parse job deleted", "parse_id", parseJob.ParseId)
 		}
 
+		err := s.tl.DeleteFile(ctx, key)
+		if err != nil {
+			slog.Error("failed to delete document", "document_id", key, "error", err)
+			return true // continue to next document
+		}
+		files.Delete(key)
+		slog.Info("document deleted", "document_id", key)
 		return true
 	})
 }
