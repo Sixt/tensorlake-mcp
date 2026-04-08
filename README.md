@@ -50,20 +50,54 @@ go build -o tensorlake-mcp .
 
 ### MCP Host Setup
 
+#### Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
 ```json
 {
   "mcpServers": {
     "tensorlake-mcp": {
       "command": "/absolute/path/to/tensorlake-mcp",
       "env": {
-        "TENSORLAKE_API_KEY": "your-api-key-here"
+        "TENSORLAKE_API_KEY": "your-api-key-here",
+        "TENSORLAKE_SANDBOX_API_BASE_URL": "https://api.tensorlake.ai/sandboxes",
+        "TENSORLAKE_SANDBOX_PROXY_BASE_URL": "https://sandbox.tensorlake.ai"
       }
     }
   }
 }
 ```
 
-See setup guides for: [Claude Desktop](https://docs.anthropic.com/en/docs/mcp-servers/mcp-servers-claude-desktop) | [Claude Code](https://code.claude.com/docs/en/mcp) | [Cursor](https://cursor.com/docs/context/mcp) | [Other MCP Clients](https://modelcontextprotocol.io/clients)
+#### Claude Code
+
+```bash
+claude mcp add tensorlake-mcp /absolute/path/to/tensorlake-mcp \
+  -e TENSORLAKE_API_KEY=your-api-key-here \
+  -e TENSORLAKE_SANDBOX_API_BASE_URL=https://api.tensorlake.ai/sandboxes \
+  -e TENSORLAKE_SANDBOX_PROXY_BASE_URL=https://sandbox.tensorlake.ai
+```
+
+#### Cursor
+
+Add to `.cursor/mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "tensorlake-mcp": {
+      "command": "/absolute/path/to/tensorlake-mcp",
+      "env": {
+        "TENSORLAKE_API_KEY": "your-api-key-here",
+        "TENSORLAKE_SANDBOX_API_BASE_URL": "https://api.tensorlake.ai/sandboxes",
+        "TENSORLAKE_SANDBOX_PROXY_BASE_URL": "https://sandbox.tensorlake.ai"
+      }
+    }
+  }
+}
+```
+
+See also: [Other MCP Clients](https://modelcontextprotocol.io/clients)
 
 ## Tools
 
