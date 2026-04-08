@@ -127,3 +127,14 @@ func ExtensionFromContentType(contentType string) string {
 	}
 	return ""
 }
+
+// ExtensionFromMediaType returns a file extension for a MIME media type.
+// This is an alias for ExtensionFromContentType since Content-Type headers
+// are just media types with optional parameters.
+func ExtensionFromMediaType(mediaType string) string {
+	ext := ExtensionFromContentType(mediaType)
+	if ext == "" {
+		return ".bin"
+	}
+	return ext
+}

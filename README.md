@@ -1,13 +1,6 @@
 # Tensorlake MCP Server
 
-An MCP (Model Context Protocol) server that provides access to Tensorlake's document parsing capabilities.
-
-## Features
-
-- **Document Upload**: Upload documents from URLs, local file paths, or data URIs
-- **Document Parsing**: Parse documents into structured data using Tensorlake's AI-powered parsing engine
-- **Document Management**: List and delete documents in your session
-- **MCP Resources**: Access parsed documents as MCP resources for seamless integration
+An MCP server that provides a cloud sandbox environment for document processing. Upload documents, parse them with AI, and work with the results using familiar harness engineering tools (bash, file read/edit, grep, glob).
 
 <a href="https://github.com/user-attachments/assets/e4818385-0f65-4b7b-9efe-8bc747e80630">
   <img src="./assets/tensorlake-mcp-demo.gif" alt="Tensorlake MCP Server Demo" width="600">
@@ -20,43 +13,42 @@ An MCP (Model Context Protocol) server that provides access to Tensorlake's docu
 
 ## Installation
 
-### Install using `go` install
+### Install using `go install`
 
 ```bash
 go install github.com/sixt/tensorlake-mcp@latest
 ```
 
-Locate the binary in your `GOPATH/bin` directory or use the `where` command to find it. For example:
+Locate the binary in your `GOPATH/bin` directory:
 
 ```bash
-$ where tensorlake-mcp
-
+$ which tensorlake-mcp
 /Users/<username>/go/bin/tensorlake-mcp
 ```
 
 ### Building from Source
 
 ```bash
-# Clone the repository
-git clone <repository-url>
+git clone https://github.com/sixt/tensorlake-mcp.git
 cd tensorlake-mcp
-
-# Build the server
 go build -o tensorlake-mcp .
 ```
 
-The binary will be created as `tensorlake-mcp` in the current directory.
-
 ## Configuration
 
-The server requires the following environment variables:
+### Environment Variables
 
-- **`TENSORLAKE_API_KEY`** (required): Your Tensorlake API key
-- **`TENSORLAKE_API_BASE_URL`** (optional): The base URL for the Tensorlake API. Defaults to `https://api.tensorlake.ai/documents/v2`
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `TENSORLAKE_API_KEY` | Yes | — | Your Tensorlake API key |
+| `TENSORLAKE_API_BASE_URL` | No | `https://api.tensorlake.ai/documents/v2` | Tensorlake API base URL |
+| `TENSORLAKE_SANDBOX_API_BASE_URL` | No | SDK default | Sandbox API base URL |
+| `TENSORLAKE_SANDBOX_PROXY_BASE_URL` | No | SDK default | Sandbox proxy base URL |
+| `TENSORLAKE_SANDBOX_TIMEOUT_SECS` | No | `3600` | Sandbox session timeout in seconds |
+| `TENSORLAKE_MCP_LOG_LEVEL` | No | `debug` | Log level: `debug`, `info`, `warn` |
+| `TENSORLAKE_SANDBOX_ID` | No | — | Reuse an existing sandbox instead of creating a new one |
 
-## Setup
-
-The MCP configuration is:
+### MCP Host Setup
 
 ```json
 {
@@ -71,77 +63,136 @@ The MCP configuration is:
 }
 ```
 
-See these articles for setting up the MCP server in your host application:
-- [Claude Desktop](https://docs.anthropic.com/en/docs/mcp-servers/mcp-servers-claude-desktop)
-- [Claude Code](https://code.claude.com/docs/en/mcp)
-- [Cursor](https://cursor.com/docs/context/mcp)
-- [Other MCP Clients](https://modelcontextprotocol.io/clients)
+See setup guides for: [Claude Desktop](https://docs.anthropic.com/en/docs/mcp-servers/mcp-servers-claude-desktop) | [Claude Code](https://code.claude.com/docs/en/mcp) | [Cursor](https://cursor.com/docs/context/mcp) | [Other MCP Clients](https://modelcontextprotocol.io/clients)
 
-## Usage
+## Tools
 
-Once configured, the MCP server provides the following tools:
+All tools operate on a cloud sandbox filesystem. The sandbox is created lazily on first use and all files live under `/data`. The sandbox session is persisted across server restarts — if the sandbox is still running, it will be reused automatically.
 
-### `upload_document`
-Upload a document from a URL, local path, or data URI.
+The server instructs AI clients to prefer dedicated tools over bash for file operations, following harness engineering best practices.
 
-**Parameters:**
-- `url` (string, required): The URL of the document to upload
-  - URL: `https://example.com/document.pdf`
-  - Local file: `file:///path/to/document.pdf`
-  - Data URI: `data:application/pdf;base64,...`
+### `bash`
 
-**Returns:** A `document_id` to be used in subsequent operations
+Execute shell commands in the sandbox. Returns exit code, stdout, and stderr. Sends MCP progress notifications during long-running commands.
 
-### `parse_document`
-Parse an uploaded document into structured data.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `command` | string | Yes | The shell command to execute |
+| `timeout_sec` | integer | No | Timeout in seconds (max 300). Default 30 |
+| `working_dir` | string | No | Working directory. Default `/data` |
+| `description` | string | No | Human-readable description of what the command does |
+| `run_in_background` | boolean | No | Run in background. Returns a `process_id` immediately |
 
-**Parameters:**
-- `document_id` (string, required): The ID returned from `upload_document`
-- `parse_id` (string, optional): The parse ID to check status or get results
-- `sync` (boolean, optional): If true, wait for parsing to complete. If false, start parsing in the background
+### `bash_status`
 
-**Returns:** Parse ID, status, and results (if completed)
+Check status or retrieve results of a background bash command.
 
-### `list_documents`
-List all documents in the current session.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `process_id` | string | Yes | Process ID from a background bash command |
 
-**Returns:** A list of all uploaded documents with their metadata
+### `file_read`
 
-### `delete_document`
-Delete a document from Tensorlake.
+Read a file from the sandbox with line numbers (cat -n format). Detects binary files, returns base64 image content for image files, and supports PDF text extraction with page ranges.
 
-**Parameters:**
-- `document_id` (string, required): The ID of the document to delete
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | Yes | Absolute path to the file |
+| `offset` | integer | No | 0-based line offset. Default 0 |
+| `limit` | integer | No | Number of lines to read. Default 2000 |
+| `pages` | string | No | PDF page range, e.g. `1-5`, `3` |
 
-### Resources
+### `file_write`
 
-The server also exposes a `tensorlake://documents` resource that provides access to all documents and their metadata.
+Write a file to the sandbox. Creates or overwrites entirely.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | Yes | Absolute path to the file |
+| `content` | string | Yes | Full content to write |
+
+### `file_edit`
+
+Edit a file using exact string replacement.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | Yes | Absolute path to the file |
+| `old_string` | string | Yes | Text to find (empty to create new file) |
+| `new_string` | string | Yes | Replacement text |
+| `replace_all` | boolean | No | Replace all occurrences. Default false |
+
+### `grep`
+
+Search file contents by regex pattern. Supports multiple output modes, context lines, and case-insensitive search.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `pattern` | string | Yes | Regex pattern to search for |
+| `path` | string | No | Directory to search. Default `/data` |
+| `glob` | string | No | File glob filter, e.g. `*.py` |
+| `output_mode` | string | No | `content` (default), `files_with_matches`, or `count` |
+| `before` | integer | No | Context lines before match (-B) |
+| `after` | integer | No | Context lines after match (-A) |
+| `context` | integer | No | Context lines before and after (-C) |
+| `ignore_case` | boolean | No | Case-insensitive search |
+| `head_limit` | integer | No | Truncate output at N lines. Default 200 |
+
+### `glob`
+
+Find files by name pattern. Supports recursive `**` patterns. Results sorted by modification time.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `pattern` | string | Yes | Glob pattern, e.g. `*.pdf`, `**/*.py` |
+| `path` | string | No | Base directory. Default `/data` |
+
+### `upload`
+
+Upload a file into the sandbox from a URL, local path, or data URI.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `source` | string | Yes | `https://...`, `file://...`, or `data:...` |
+| `destination` | string | No | Sandbox path. Default `/data/<filename>` |
+
+### `parse`
+
+Parse a document using Tensorlake AI. Writes the result as markdown.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | Yes | Path to the document in the sandbox |
+| `output_path` | string | No | Output path. Default `/data/parsed/<basename>.md` |
 
 ## Example Interaction
 
 ```
-User: Upload and parse this PDF document at https://example.com/invoice.pdf
+User: Parse this invoice at https://example.com/invoice.pdf and find the total amount.
 
-AI: [Uses upload_document tool]
-    [Uses parse_document tool with sync=true]
-    Here's the parsed content from your invoice...
+AI: [Uses upload to fetch the PDF into the sandbox]
+    [Uses parse to extract content as markdown]
+    [Uses file_read to inspect the parsed result]
+    [Uses grep to search for the total amount]
+    The total amount on the invoice is $1,234.56.
 ```
 
 ## Development
 
-### Running in Development
-
 ```bash
-# Set environment variables
 export TENSORLAKE_API_KEY="your-api-key"
-
-# Run the server
 go build && ./tensorlake-mcp
 ```
 
-### Testing with MCP Inspector
+### Testing
 
-You can test the server using the [MCP Inspector](https://github.com/modelcontextprotocol/inspector):
+Integration tests require a valid API key:
+
+```bash
+TENSORLAKE_API_KEY="your-api-key" go test -v ./...
+```
+
+### MCP Inspector
 
 ```bash
 npx @modelcontextprotocol/inspector /absolute/path/to/tensorlake-mcp
